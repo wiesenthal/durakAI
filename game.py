@@ -1,24 +1,71 @@
 from random import shuffle
+from colorama import Fore, Back, Style, init
+from colors import ColorHandler
+
+ch = ColorHandler()
 
 
 def to_str(card_list):
     output = ''
-    for card in card_list:
-        output += f'{repr(card)}\n'
+    if isinstance(card_list, list):
+        for card in card_list:
+            output += f'{repr(card)}\n'
+    elif isinstance(card_list, dict):
+        for card, response in card_list.items():
+            output += f'{repr(card)}  <  {repr(response)}\n'
     return output
 
 
-def options(card_list):
+def options(card_list, highlighted_cards=None, hl=Fore.WHITE + Style.BRIGHT, nl=Style.DIM + Fore.WHITE):
     top = ''
     bottom = ''
     for i, card in enumerate(card_list):
+        if card == '':
+            card = '[ X ]'
+
         bt = f' {card} '
         tp = str(i + 1)
         half = len(bt) // 2
         rest = (len(bt) - len(tp)) - half
+
+        if highlighted_cards:
+            if card in highlighted_cards:
+                tp = ch(hl) + tp + ch.end
+                bt = ch(hl) + bt + ch.end
+            else:
+                tp = ch(nl) + tp + ch.end
+                bt = ch(nl) + bt + ch.end
+
         top += ' ' * half + tp + ' ' * rest
         bottom += bt
+
     return top + '\n' + bottom
+
+
+def is_matching_attack(defended_cards, undefended_cards, attack):
+    for card in attack:
+        if not match(defended_cards, undefended_cards, card):
+            return False
+    return True
+
+
+def match(defended_cards, undefended_cards, card):
+    if len(defended_cards) + len(undefended_cards) == 0:
+        return True
+    all_possibilities = [] + list(defended_cards.keys()) + list(defended_cards.values()) + list(undefended_cards)
+    match = False
+    for other in all_possibilities:
+        if card.rank == other.rank:
+            match = True
+    return match
+
+
+def selection_to_cards(selection, hand):
+    played_cards = []
+    for index in selection:
+        i = int(index) - 1
+        played_cards.append(hand[i])
+    return played_cards
 
 
 class Card:
@@ -124,7 +171,13 @@ class Deck:
         return cards
 
     def deal_to(self, player):
-        player.pick_up(self.deal(Player.MAX_CARDS - player.hand_size))
+        if player.hand_size >= Player.STARTING_HAND_SIZE:
+            return 0
+        old_hand_size = player.hand_size
+        player.pick_up(self.deal(Player.STARTING_HAND_SIZE - player.hand_size))
+        if player.hand_size < Player.STARTING_HAND_SIZE:
+            print('DECK OUT OF CARDS!')
+        return player.hand_size - old_hand_size
 
     def __len__(self):
         return len(self.cards)
@@ -148,11 +201,15 @@ class Deck:
 
 
 class Player:
-    MAX_CARDS = 6
+    STARTING_HAND_SIZE = 6
 
     def __init__(self, name):
         self.name = name.capitalize()
         self.hand = []
+        self.finished = False
+
+    def sort_hand(self):
+        self.hand.sort(key=lambda c: (c.trump, c.rank, c.suit_num()))
 
     def pick_up(self, *cards):
         if isinstance(cards[0], list):
@@ -161,6 +218,7 @@ class Player:
             self.hand.extend(cards)
         else:
             raise TypeError
+        self.sort_hand()
 
     def choose(self, cards, prompt, deny='', one_option=False):
 
@@ -169,17 +227,16 @@ class Player:
                 s = s.split(',')
             elif ' ' in s:
                 s = s.split(' ')
-            if len(s) == 1:
-                return [s.strip()]
             else:
-                return [x.strip() for x in s]
+                return [s.strip()]
+            return [x.strip() for x in s]
 
         def is_valid(s):
             if len(s) == 0:
                 return False
             if len(s) > 1 and one_option:
                 return False
-
+            seen_choices = []
             for choice in s:
                 try:
                     if s == '':
@@ -187,7 +244,9 @@ class Player:
                     elif int(choice) > len(self.hand) or int(choice) < 1:
                         return False
                     else:
-                        pass
+                        if int(choice) in seen_choices:
+                            return False
+                        seen_choices.append(int(choice))
                 except (TypeError, ValueError):
                     return False
 
@@ -204,7 +263,7 @@ class Player:
                 print(' ' * (len(s_text)) + deny_text)
             selection = input(s_text)
             if deny and selection == deny:
-                return selection
+                return []
             selection = parse(selection)
             if not is_valid(selection):
                 print('Invalid.')
@@ -215,8 +274,9 @@ class Player:
         print(options(self.hand))
         print()
         do_match = False
+        selection = []
         while not do_match:
-            selection = self.choose(self.hand, 'Which card(s) to attack?')
+            selection = self.choose(self.hand, 'Which card(s) to attack with?')
             rank = self.hand[int(selection[0]) - 1].rank
             # check if they all match
             do_match = True
@@ -233,49 +293,89 @@ class Player:
 
         return played_cards
 
-    def add_attack(self, cards_on_table):
-        print('Your hand:')
-        print(options(self.hand))
+    def add_attack(self, defended_cards, undefended_cards=None):
+        if undefended_cards is None:
+            undefended_cards = []
+
+        matching_cards = []
+        for c in self.hand:
+            if match(defended_cards, undefended_cards, c):
+                matching_cards.append(c)
+
+        if not matching_cards:
+            return []
+
+        print('Add to the attack?')
+        print(to_str(defended_cards))
+        print(to_str(undefended_cards))
+        print('Your hand (playable cards in yellow):')
+        print(options(self.hand, matching_cards, hl=Fore.YELLOW))
         print()
-        do_match = False
-        while not do_match:
-            selection = self.choose(self.hand, 'Which card(s) to attack?')
-            rank = self.hand[int(selection[0]) - 1].rank
-            # check if they all match
-            do_match = True
-            for index in selection:
-                i = int(index) - 1
-                if self.hand[i].rank != rank:
-                    do_match = False
-            if not do_match:
-                print('The selected cards do not have the same rank.')
+
+        selection = self.choose(self.hand, 'Which card(s) to add to the attack? ', deny='0')
+        while not is_matching_attack(defended_cards, undefended_cards, selection_to_cards(selection, self.hand)) or len(
+                list(defended_cards.keys()) + undefended_cards) + len(selection) > 6:
+            if is_matching_attack(defended_cards, undefended_cards, selection_to_cards(selection, self.hand)):
+                print('Too many attacking cards. No greater than 6.')
+            else:
+                print('Those cards do not match the ones on the table.')
+            selection = self.choose(self.hand, 'Which card(s) to add to the attack? ', deny='0')
+
         # selection is now a list of card indices
         played_cards = []
         for index in sorted(selection, reverse=True):
-            played_cards.append(self.hand.pop(int(index) - 1))
-
+            i = int(index) - 1
+            played_cards.append(self.hand.pop(i))
         return played_cards
 
-    def defend(self, cards):
+    def defend(self, cards, defended_cards=None):
+        if defended_cards is None:
+            defended_cards = dict()
+        else:
+            print("Already defended: ")
+            print(to_str(defended_cards))
+        highlighted_cards = []
+        for _card in cards:
+            blocked = False
+            for my_card in self.hand:
+                if my_card > _card:
+                    highlighted_cards.append(my_card)
+                    blocked = True
+            if not blocked:
+                # cannot defend
+                return dict()
+
         print("Attacked by: ")
         print(to_str(cards))
-        print("Your hand: ")
-        print(options(self.hand))
+        print("Your hand (playable cards in yellow): ")
+        print(options(self.hand, highlighted_cards, hl=Fore.YELLOW + Style.BRIGHT))
         print()
         defense = dict()
+        selection = []
         for card in cards:
             can_defend = False
             i = -1
             while not can_defend:
-                selection = self.choose(self.hand, f'Which card to defend {card}?', deny='0', one_option=True)
-                i = int(selection[0]) - 1
+                pick = self.choose(self.hand, f'Which card to defend against {card}?', deny='0', one_option=True)
+                if not pick:
+                    return dict()
+                i = int(pick[0]) - 1
                 c = self.hand[i]
+                if c in defense.values():
+                    print(f'{c} is already being used to defend a card.')
+                    clear()
+                    return self.defend(cards, defended_cards)
                 if c > card:
                     can_defend = True
+                    selection.append(i)
                 else:
-                    print(f'{c} cannot defend aganst {card}')
-            c = self.hand.pop(int(selection[0]) - 1)
+                    print(f'{c} cannot defend against {card}')
+
+            c = self.hand[i]
             defense[card] = c
+        for index in sorted(selection, reverse=True):
+            self.hand.pop(index)
+        return defense
 
     @property
     def hand_size(self):
@@ -290,6 +390,7 @@ class Player:
 from os import system, name
 
 
+# helpers
 def clear():  # clear screen
     if name == 'nt':
         system('cls')
@@ -303,52 +404,21 @@ def refresh(deck):
     print()
 
 
-def one_turn(deck, attacker, defender):
-    max_attacks = defender.hand_size
-
-    num_attacks = 0
-    while num_attacks < max_attacks:
-        refresh(deck)
-        print(f'{attacker.name} attacking {defender.name}!')
-        a = attacker.attack()
-        num_attacks += len(a)
-        refresh(deck)
-        print(f'{attacker.name} attacking {defender.name}!')
-        print(to_str(a))
-        input(f'{defender.name}\'s turn to defend.\nPress enter to continue...')
-        refresh(deck)
-        d = defender.defend(a)
+def next_id(x, players):
+    orig_x = x
+    x = (x + 1) % len(players)
+    while players[x].hand_size == 0:
+        x = (x + 1) % len(players)
+        if x == orig_x:  # if cycled around
+            return orig_x
+    return x
 
 
-from time import sleep
-
-
-def play_game(deck, *players):
-    # assume deck is initialized
-    for i, player in enumerate(players):
-        deck.deal_to(player)
-        player.id = i
-
-    def next_id(x):
-        return (x + 1) % len(players)
-
-    first_id = 0
-    min_trump = 14
-    for player in players:
-        for c in player.hand:
-            if c.rank < min_trump and c.trump:
-                min_trump = c.rank
-                first_id = player.id
-    refresh(deck)
-    input(f'{players[first_id].name} goes first.\nPress enter to continue...')
-    refresh(deck)
-    cur_id = first_id
-    n_id = next_id(cur_id)
-    one_turn(deck, players[cur_id], players[n_id])
-
-
-if __name__ == '__main__':
-    d = Deck()
-    gavin = Player('gavin')
-    miles = Player('miles')
-    play_game(d, gavin, miles)
+def prev_id(x, players):
+    orig_x = x
+    x = (x + 1) % len(players)
+    while players[x].hand_size == 0:
+        x = (x + len(players) - 1) % len(players)
+        if x == orig_x:  # if cycled around
+            return orig_x
+    return x

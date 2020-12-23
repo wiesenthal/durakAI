@@ -1,0 +1,34 @@
+LOOPING IS POSSIBLE: NEED TO PREVENT
+ITERATIVE DEEPENING SEARCH
+DEPTH COUNTER
+
+
+end game first, that can be minimaxed
+probabilities of each card being in opponents hand
+probability of a card attacking being defended
+probability of a card having attackers added on
+average card in deck
+
+If an opponent cannot defend: You get to remove more cards. How good is that? (average?) (recursive?)
+
+How good is a card?
+	How easily will I be able to get rid of this card?
+		Probability it can defend a card my opponent would play
+		Probability I can play it on an attack: pairs have this halved, triples have this 1/3
+	Will it allow me to get rid of more cards?
+		Probability it wins the attack
+
+Should I attack with these cards?
+	Will my opponent be able to defend?
+		Answer: Probability he can defend each card.
+			Probability to defend each card = # cards that can defend it. Which of those have been discarded or in your hand. # cards in opponent hand
+	Will the cards be replaced with better cards?
+		Answer: If last card, then check easily
+		Answer: Average card in deck
+
+Should I defend?
+	How bad are the cards I would pick up?
+		Answer: (negative) How good are they
+	How good are the cards I defend with?
+	How likely is there to be more cards added on with the cards I defend?
+		Likelyhood each card is in opponents hand
