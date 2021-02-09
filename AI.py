@@ -1,6 +1,7 @@
 from game import *
 from itertools import chain, combinations
 from game_playing import *
+from math import inf
 
 
 def powerset(s):
@@ -277,51 +278,141 @@ def choose_best_defense(my_cards, enemy_cards, defended_cards, undefended_cards)
 
 
 class AI(Player):
-    def __init__(self, name, enemy):
+    def __init__(self, name, enemy, deck):
         super().__init__(name)
         self.enemy = enemy
         self.enemy_cards = enemy.hand
+        self.all_cards = deck._all_cards.copy()
+        self.unseen_cards = self.all_cards
+        self.see_cards(self.hand)
+
+    def expected_value(self):
+        # what is the expected value from drawing a card?
+
+        total = 0
+        n = 0
+        for card in self.unseen_cards:
+            total += self.value(card)
+            n += 1
+        return total/n
+
+    def value(self, card):
+        # how many cards in the deck can this card defend against?
+        v = 0
+        for c in self.unseen_cards:
+            if card > c:
+                v += 1
+
+        return v
+
+    def expected_change(self, card):
+        # how much i will expect to gain/lose in value from discarding a card and drawing a new one
+        return self.expected_value() - self.value(card)
+
+    def card_value(self, card):
+        # how easily can i get rid of this card?
+        # - will i be able to defend with this card in a given defense * number of times i will likely defend
+        # - will i be able to add attack with this card * number of times i will likely be able to add
+        # - will i be able to attack with this card * number of times i will likely attack
+
+        # probability that this card will be replaced by a better card
+        # number of cards better than this in the deck / total number of cards in the deck
+        pass
+
+    def attack_value(self, attack):
+        # should I attack with these cards: how good is that
+        # expected value change of each card
+        v = 0
+        expected_value_change = sum(self.expected_change(c) for c in attack)
+        # + probability he cannot defend * (value of next attack) * (value of the cards he will pick up)
+        # + probability he can defend * value of cards he loses
+        v = expected_value_change
+        return v
+
+    def defend_value(self, defend):
+        # should I defend with these cards?
+        v = 0
+        expected_value_change = sum(self.expected_change(c) for c in defend)
+        # will other cards be added?
+        # + probability other cards will be added that cannot be defended * value of those cards (negative)
+        # + probability other cards will be added that can be defended * value of that defense
+
+        v = expected_value_change
+        return v
+
+
+    def p_defend(self, attacks): # probability these cards will be defended
+        # number of cards > than this card
+        # math for how many cards he has in hand
+        pass
+
+    def attack_midgame(self):
+        max = -inf
+        max_pick = None
+        for attack in possible_attacks(dict(), []. self.hand):
+            av = self.attack_value(attack)
+            if av > max:
+                max = av
+                max_pick = attack
+        return max_pick
+
+    def see_cards(self, cards):
+        self.unseen_cards = [x for x in self.unseen_cards if x not in cards]
 
     def add_attack(self, defended_cards, undefended_cards=None):
-        self.enemy_cards = self.enemy.hand
-        return choose_best_attack(self.hand, self.enemy_cards, defended_cards, undefended_cards)
+        if len(self.unseen_cards) == self.enemy.hand_size: # empty deck
+            self.enemy_cards = self.enemy.hand
+            return choose_best_attack(self.hand, self.enemy_cards, defended_cards, undefended_cards)
 
     def attack(self):
-        self.enemy_cards = self.enemy.hand
-        c = choose_best_attack(self.hand, self.enemy_cards, dict(), [])
-        self.hand = [x for x in self.hand if x not in c]
-        return c
+        if len(self.unseen_cards) == self.enemy.hand_size: # empty deck
+            self.enemy_cards = self.enemy.hand
+            c = choose_best_attack(self.hand, self.enemy_cards, dict(), [])
+            self.hand = [x for x in self.hand if x not in c]
+            return c
 
     def defend(self, cards, defended_cards=None):
-        self.enemy_cards = self.enemy.hand
-        if defended_cards is None:
-            defended_cards = dict()
-        return choose_best_defense(self.hand, self.enemy_cards, defended_cards, cards)
+        if len(self.unseen_cards) == self.enemy.hand_size:  # empty deck
+            self.enemy_cards = self.enemy.hand
+            if defended_cards is None:
+                defended_cards = dict()
+            return choose_best_defense(self.hand, self.enemy_cards, defended_cards, cards)
+
+def test_value():
+    d = Deck(num_players=2)
+    miles = Player('miles')
+    d.deal_to(miles)
+    gavin = AI('gavin', miles, d)
+    print(d)
+    d.deal_to(gavin)
+    for card in gavin.hand:
+        print(f"value of {card}: {gavin.value(card)}")
+    print(f"expected value in deck: {gavin.expected_value()}")
 
 
-random.seed(12)
-d = Deck(num_players=2)
-miles = Player('miles')
-d.deal_to(miles)
-gavin = AI('gavin', miles)
-print(d)
-d.deal_to(gavin)
-d.cards = []
+def test_1():
+    d = Deck(num_players=2)
+    miles = Player('miles')
+    d.deal_to(miles)
+    gavin = AI('gavin', miles, d)
+    print(d)
+    d.deal_to(gavin)
+    d.cards = []
 
-print(to_str(miles.hand))
-print(to_str(gavin.hand))
+    print(to_str(miles.hand))
+    print(to_str(gavin.hand))
 
-play_game(d, miles, gavin)
+    play_game(d, miles, gavin)
 
-p = possible_attacks(dict(), [], miles.hand)
-print(f'Miles Possible Attacks: {p}')
-print('best attack: ')
-a = list(choose_best_attack(miles.hand, gavin.hand, dict(), []))
-print(a)
-for i in a:
-    miles.hand.remove(i)
-b = choose_best_defense(gavin.hand, miles.hand, dict(), a)
-for i2 in b.values():
-    gavin.hand.remove(i2)
-print('best defense: ')
-print(b)
+    p = possible_attacks(dict(), [], miles.hand)
+    print(f'Miles Possible Attacks: {p}')
+    print('best attack: ')
+    a = list(choose_best_attack(miles.hand, gavin.hand, dict(), []))
+    print(a)
+    for i in a:
+        miles.hand.remove(i)
+    b = choose_best_defense(gavin.hand, miles.hand, dict(), a)
+    for i2 in b.values():
+        gavin.hand.remove(i2)
+    print('best defense: ')
+    print(b)

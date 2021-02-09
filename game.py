@@ -128,7 +128,7 @@ class Card:
 
 
 class Deck:
-    PLAYER_TO_RANK = {4: 6, 3: 7, 2: 8, 5: 5, 6: 4, 7: 3, 8: 2}
+    PLAYER_TO_RANK = {4: 6, 3: 6, 2: 6, 5: 5, 6: 4, 7: 3, 8: 2}
 
     def __init__(self, **kargs):
         # deal with arguments
@@ -152,6 +152,7 @@ class Deck:
         # find trump suit and card
         self.trump_card = str(self.cards[0])
         self.trump_suit = self.cards[0].suit
+        self._all_cards = self.cards.copy()
 
     def shuffle(self):
         shuffle(self.cards)
